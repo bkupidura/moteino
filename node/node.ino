@@ -156,31 +156,6 @@ int readDS18B20(OneWire ds)
 }
 #endif
 
-#ifdef MOTIONPIN
-void disable_motion()
-{
-  pinMode(MOTIONPIN, OUTPUT);
-  detachInterrupt(1);
-}
-
-void enable_motion()
-{
-  pinMode(MOTIONPIN, INPUT_PULLUP);
-  attachInterrupt(1, motionIRQ, RISING);
-}
-
-void motionIRQ()
-{
-  if (!lData.motionDetected)
-  {
-    lData.motionDetected = true;
-    disable_motion();
-    doReport();
-    DEBUGln("Motion detected");
-  }
-}
-#endif
-
 #ifdef LOCKEDPIN
 byte locked()
 {
@@ -248,6 +223,31 @@ void doReport()
   radio.sleep();
   BLINK(3);
 }
+
+#ifdef MOTIONPIN
+void disable_motion()
+{
+  pinMode(MOTIONPIN, OUTPUT);
+  detachInterrupt(1);
+}
+
+void motionIRQ()
+{
+  if (!lData.motionDetected)
+  {
+    lData.motionDetected = true;
+    disable_motion();
+    doReport();
+    DEBUGln("Motion detected");
+  }
+}
+
+void enable_motion()
+{
+  pinMode(MOTIONPIN, INPUT_PULLUP);
+  attachInterrupt(1, motionIRQ, RISING);
+}
+#endif
 
 void doMeasure()
 {

@@ -79,26 +79,6 @@ void Blink(byte PIN, int DELAY_MS)
   digitalWrite(PIN,LOW);
 }
 
-int readVcc()
-{
-  long result;
-  // Read 1.1V reference against AVcc
-  ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
-  delay(2); // Wait for Vref to settle
-  ADCSRA |= _BV(ADSC); // Convert
-  while (bit_is_set(ADCSRA,ADSC));
-  result = ADCL;
-  result |= ADCH<<8;
-  result = 1126400L / result; // Back-calculate AVcc in mV
-  return (int)result;
-}
-
-static int smoothedAverage(int prev, int next, bool firstTime = 0)
-{
-  if (firstTime) return next;
-  return (int)((prev + next) / 2);
-}
-
 void report_value(uint8_t senderid, String value)
 {
   Serial.print("[");Serial.print(senderid);Serial.print("]");
@@ -133,28 +113,12 @@ String int162int_metric(String sensor_type, int16_t data)
   return sensor_type;
 }
 
-void doMeasure()
-{
-  DEBUGln("doMeasure()");
-  bool firstTime = 0;
-  if (lData.uptime == 0)
-  {
-    firstTime = 1;
-  }
-
-  lData.uptime++;
-  if (lData.uptime == 255) lData.uptime = 50;
-
-  lData.vcc = smoothedAverage(lData.vcc, readVcc(), firstTime);
-
-}
-
 void doReport()
 {
   DEBUGln("doReport()");
 
-  report_value(NODEID, int2float_metric("voltage", lData.vcc, 1000.0, 2));
-  report_value(NODEID, byte2int_metric("uptime", lData.uptime));
+  if (lData.uptime == 255) lData.uptime = 50;
+  report_value(NODEID, byte2int_metric("uptime", ++lData.uptime));
 }
 
 void setup()
@@ -201,12 +165,7 @@ void loop()
         switch (input.toInt())
         {
           case 1:
-            doMeasure();
-            if (++reportCount >= REPORT_EVERY)
-            {
-              reportCount = 0;
-              doReport();
-            }
+            doReport();
             break;
         }
       }
