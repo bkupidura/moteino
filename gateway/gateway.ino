@@ -16,6 +16,7 @@
 #include <SPI.h>           //comes with Arduino IDE (www.arduino.cc)
 #include <Ports.h>         //get it here: https://github.com/jcw/jeelib
 #include <LinkedList.h>    //get it here: https://github.com/ivanseidel/LinkedList
+#include <avr/wdt.h>
 
 
 //*****************************************************************************************************************************
@@ -28,13 +29,10 @@
 #define LED              9
 #define FLASH_CS         8
 #define ACK_TIME         100
-#define REPORT_EVERY     3
 #define SERIAL_BAUD      115200
 #define SERIAL_EN        //comment out if you don't want any serial verbose output
 #define COMMAND_LIST_MAX 20
 //*****************************************************************************************************************************
-
-static byte reportCount = REPORT_EVERY;
 
 #ifdef SERIAL_EN
   #define DEBUG(input)   {Serial.print(input); delay(1); Serial.flush();}
@@ -62,7 +60,7 @@ Payload rData, lData;
 
 typedef struct {
   int nodeid;
-  byte cmd; /*1 - measure (S), 10 - update (C), 255 - reboot (C), */
+  byte cmd; /*1 - measure (S), 10 - update (C), 255 - reboot (C,S), */
 } remote_cmd;
 LinkedList<remote_cmd> cmd_list;
 
@@ -166,6 +164,10 @@ void loop()
         {
           case 1:
             doReport();
+            break;
+          case 255:
+            wdt_enable(WDTO_15MS);
+            while(1);
             break;
         }
       }

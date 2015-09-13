@@ -228,7 +228,7 @@ void doReport()
 void disable_motion()
 {
   pinMode(MOTIONPIN, OUTPUT);
-  detachInterrupt(1);
+  detachInterrupt(digitalPinToInterrupt(MOTIONPIN));
 }
 
 void motionIRQ()
@@ -245,7 +245,7 @@ void motionIRQ()
 void enable_motion()
 {
   pinMode(MOTIONPIN, INPUT_PULLUP);
-  attachInterrupt(1, motionIRQ, RISING);
+  attachInterrupt(digitalPinToInterrupt(MOTIONPIN), motionIRQ, RISING);
 }
 #endif
 
