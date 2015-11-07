@@ -5,20 +5,20 @@
 #include <OneWire.h>       //get it here: https://github.com/pbrook/arduino-onewire
 #include <WirelessHEX69.h>
 #include <avr/wdt.h>
+#include <PinChangeInt.h>
 
-#define NODEID 11
 #define NETWORKID       100
 #define GATEWAYID       1
-#define FREQUENCY       RF69_868MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
+#define FREQUENCY       RF69_868MHZ        //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
 #define ENCRYPTKEY      "sampleEncryptKey" //has to be same 16 characters/bytes on all nodes, not more not less!
 #define LED             9
 #define SERIAL_BAUD     115200
 #define SERIAL_EN
-//#define BLIND
+//#define BLIND                             //if BLIND disable LED blinking
 #define ACK_TIME        100
 #define SEND_RETRIES    3
-#define MEASURE_PERIOD  10*10                 // how often to measure, in tenths of seconds (500)
-#define REPORT_EVERY    3                   // report every N measurement cycles
+#define MEASURE_PERIOD  10*10               // how often to measure, in tenths of seconds (500)
+#define REPORT_EVERY    3                  // report every N measurement cycles
 
 #ifdef SERIAL_EN
   #define DEBUG(input)   {Serial.print(input); delay(1); Serial.flush(); }
@@ -35,10 +35,10 @@
 #endif
 
 #if NODEID == 10
-  //#define MOTIONPIN       3
+  #define MOTIONPIN       16
   #define FLASH_JEDEC 0xEF30
 #elif NODEID == 11
-  //#define MOTIONPIN       3
+  //#define MOTIONPIN       16
   //#define LOCKEDPIN       4
   #define FLASH_JEDEC 0xEF30
 #elif NODEID == 12
@@ -72,6 +72,7 @@ typedef struct {
   byte          uptime = 0;
   unsigned int  token = 0;
   int16_t       rssi = 0;
+  unsigned short version = VERSION;
 } Payload;
 Payload lData;
 
@@ -228,7 +229,7 @@ void doReport()
 void disable_motion()
 {
   pinMode(MOTIONPIN, OUTPUT);
-  detachInterrupt(digitalPinToInterrupt(MOTIONPIN));
+  PCintPort::detachInterrupt(MOTIONPIN);
 }
 
 void motionIRQ()
@@ -245,7 +246,7 @@ void motionIRQ()
 void enable_motion()
 {
   pinMode(MOTIONPIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(MOTIONPIN), motionIRQ, RISING);
+  PCintPort::attachInterrupt(MOTIONPIN, motionIRQ, RISING);
 }
 #endif
 
@@ -309,6 +310,7 @@ void setup()
   
   randomSeed(analogRead(0));
   
+  DEBUG("Node id:");DEBUGln(NODEID);
   DEBUG("Sizeof Payload:");DEBUGln(sizeof(lData));
   BLINK(10);
   

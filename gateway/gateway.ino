@@ -55,6 +55,7 @@ typedef struct {
   byte          uptime = 0;
   unsigned int  token = 0;
   int16_t       rssi = 0;
+  unsigned short version = VERSION;
 } Payload;
 Payload rData, lData;
 
@@ -83,31 +84,19 @@ void report_value(uint8_t senderid, String value)
   Serial.print("[");Serial.print(value);Serial.println("]");
 }
 
-String int2float_metric(String sensor_type, int data, float divisor, int prec)
+template<typename type> String value2metric(String sensor_type, type value)
+{
+    sensor_type += ":";
+    sensor_type += value;
+    return sensor_type;
+}
+String value2metric(String sensor_type, int value, float divisor, int prec)
 {
   char tmp[10];
-  dtostrf(data / divisor, 4, prec, tmp);
+  dtostrf(value / divisor, 4, prec, tmp);
 
   sensor_type += ":";
   sensor_type += tmp;
-  return sensor_type;
-}
-String byte2int_metric(String sensor_type, byte data)
-{
-  sensor_type += ":";
-  sensor_type += data;
-  return sensor_type;
-}
-String bool2int_metric(String sensor_type, bool data)
-{
-  sensor_type += ":";
-  sensor_type += data;
-  return sensor_type;
-}
-String int162int_metric(String sensor_type, int16_t data)
-{
-  sensor_type += ":";
-  sensor_type += data;
   return sensor_type;
 }
 
@@ -116,7 +105,8 @@ void doReport()
   DEBUGln("doReport()");
 
   if (lData.uptime == 255) lData.uptime = 50;
-  report_value(NODEID, byte2int_metric("uptime", ++lData.uptime));
+  report_value(NODEID, value2metric("uptime", ++lData.uptime));
+  report_value(NODEID, value2metric("version", lData.version));
 }
 
 void setup()
@@ -136,6 +126,7 @@ void setup()
   {
     DEBUGln("SPI Flash Init FAIL! (is chip present?)");
   }
+  delay(1000);
 
 }
 
@@ -214,12 +205,13 @@ void loop()
 
     if (!rData.processed)
     {
-      if (rData.vcc) report_value(senderid, int2float_metric("voltage", rData.vcc, 1000.0, 2));
-      if (rData.temp != 85) report_value(senderid, int2float_metric("temperature", rData.temp, 100.0, 1));
-      if (rData.uptime) report_value(senderid, byte2int_metric("uptime", rData.uptime));
-      if (rData.motionDetected) report_value(senderid, bool2int_metric("motion", rData.motionDetected));
-      if (rData.failedReport) report_value(senderid, byte2int_metric("failedreport", rData.failedReport));
-      if (rData.rssi) report_value(senderid, int162int_metric("rssi", rData.rssi));
+      if (rData.vcc) report_value(senderid, value2metric("voltage", rData.vcc, 1000.0, 2));
+      if (rData.temp != 85) report_value(senderid, value2metric("temperature", rData.temp, 100.0, 1));
+      if (rData.uptime) report_value(senderid, value2metric("uptime", rData.uptime));
+      if (rData.motionDetected) report_value(senderid, value2metric("motion", rData.motionDetected));
+      if (rData.failedReport) report_value(senderid, value2metric("failedreport", rData.failedReport));
+      if (rData.rssi) report_value(senderid, value2metric("rssi", rData.rssi));
+      if (rData.version) report_value(senderid, value2metric("version", rData.version));
       rData.processed = true;
     }
   }
