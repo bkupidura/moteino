@@ -6,19 +6,7 @@
 #include <WirelessHEX69.h>
 #include <avr/wdt.h>
 #include <PinChangeInt.h>
-
-#define NETWORKID       100
-#define GATEWAYID       1
-#define FREQUENCY       RF69_868MHZ        //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
-#define ENCRYPTKEY      "sampleEncryptKey" //has to be same 16 characters/bytes on all nodes, not more not less!
-#define LED             9
-#define SERIAL_BAUD     115200
-#define SERIAL_EN
-//#define BLIND                             //if BLIND disable LED blinking
-#define ACK_TIME        100
-#define SEND_RETRIES    3
-#define MEASURE_PERIOD  10*10               // how often to measure, in tenths of seconds (500)
-#define REPORT_EVERY    3                  // report every N measurement cycles
+#include "config.h"
 
 #ifdef SERIAL_EN
   #define DEBUG(input)   {Serial.print(input); delay(1); Serial.flush(); }
@@ -32,19 +20,6 @@
   #define BLINK(delay);
 #else
   #define BLINK(delay) {Blink(LED,delay);}
-#endif
-
-#if NODEID == 10
-  #define MOTIONPIN       16
-  #define FLASH_JEDEC 0xEF30
-#elif NODEID == 11
-  //#define MOTIONPIN       16
-  //#define LOCKEDPIN       4
-  #define FLASH_JEDEC 0xEF30
-#elif NODEID == 12
-  #define DALLAS_PIN      15
-  #define DALLAS_PIN_PWR  14
-  #define FLASH_JEDEC 0x1F44
 #endif
 
 enum { MEASURE, REPORT, TASK_END };
@@ -154,19 +129,6 @@ int readDS18B20(OneWire ds)
   ds.reset_search();
   resultTempFloat =  (int) ((6 * TReading) + TReading / 4);  // Multiply by (100 * 0.0625) or 6.25
   return resultTempFloat;
-}
-#endif
-
-#ifdef LOCKEDPIN
-byte locked()
-{
-  byte locked;
-  pinMode(LOCKEDPIN, INPUT);
-  digitalWrite(LOCKEDPIN, HIGH);
-  locked = digitalRead(LOCKEDPIN);
-  DEBUG("LOCKED:"); DEBUGln(locked);
-  pinMode(LOCKEDPIN, OUTPUT);
-  return locked*255; //0 - locked, 255 not locked
 }
 #endif
 
@@ -283,9 +245,6 @@ void doMeasure()
     }
     lData.temp = smoothedAverage(lData.temp, temp_ds, firstTime);
   #endif
-  #ifdef LOCKEDPIN
-    lData.locked = smoothedAverage(lData.locked, locked(), firstTime);
-  #endif
 }
 
 void setup()
@@ -318,9 +277,6 @@ void setup()
   #ifdef MOTIONPIN
     DEBUGln("Motion pin enabled");
     enable_motion();
-  #endif
-  #ifdef LOCKEDPIN
-    DEBUGln("Locked pin enabled");
   #endif
   #ifdef DALLAS_PIN
     DEBUGln("Dallas pin enabled");

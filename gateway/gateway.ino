@@ -17,22 +17,7 @@
 #include <Ports.h>         //get it here: https://github.com/jcw/jeelib
 #include <LinkedList.h>    //get it here: https://github.com/ivanseidel/LinkedList
 #include <avr/wdt.h>
-
-
-//*****************************************************************************************************************************
-// ADJUST THE SETTINGS BELOW DEPENDING ON YOUR HARDWARE/SITUATION!
-//*****************************************************************************************************************************
-#define NODEID           1
-#define NETWORKID        100
-#define FREQUENCY        RF69_868MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
-#define ENCRYPTKEY       "sampleEncryptKey" //has to be same 16 characters/bytes on all nodes, not more not less!
-#define LED              9
-#define FLASH_CS         8
-#define ACK_TIME         100
-#define SERIAL_BAUD      115200
-#define SERIAL_EN        //comment out if you don't want any serial verbose output
-#define COMMAND_LIST_MAX 20
-//*****************************************************************************************************************************
+#include "config.h"
 
 #ifdef SERIAL_EN
   #define DEBUG(input)   {Serial.print(input); delay(1); Serial.flush();}
