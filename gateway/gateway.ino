@@ -111,6 +111,9 @@ void setup()
   {
     DEBUGln("SPI Flash Init FAIL! (is chip present?)");
   }
+
+  DEBUG("Network ID:");DEBUGln(NETWORKID);
+  DEBUG("Encrypt key:");DEBUGln(ENCRYPTKEY);
   delay(1000);
 
 }
