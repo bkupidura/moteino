@@ -8,3 +8,4 @@
 #define SERIAL_BAUD      115200
 #define SERIAL_EN        //comment out if you don't want any serial verbose output
 #define COMMAND_LIST_MAX 20
+#define MESSAGE_TIMEOUT  240000UL /* 1000 ms * 120 (report interval) * 2 UL (unsigned long) */

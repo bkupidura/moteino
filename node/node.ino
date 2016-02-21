@@ -43,9 +43,10 @@ typedef struct {
   boolean       motionDetected = false;
   boolean       processed = false;
   byte          failedReport = 0;
-  byte          locked = 0;
   byte          uptime = 0;
+  byte          type = 0; /* 0 - error, 1 - measure */
   unsigned int  token = 0;
+  uint32_t      time = 0;
   int16_t       rssi = 0;
   unsigned short version = VERSION;
 } Payload;
@@ -53,6 +54,8 @@ Payload lData;
 
 typedef struct {
   unsigned int token = 0;
+  uint32_t     time = 0;
+  byte         type = 0; /* 0 - error, 1 - measure */
   byte         cmd = 0;
 } ACKPayload;
 ACKPayload ackData;
@@ -77,7 +80,6 @@ int readVcc()
   return (int)result;
 }
 
-#ifndef BLIND
 void Blink(byte PIN, int DELAY_MS)
 {
   pinMode(PIN, OUTPUT);
@@ -85,7 +87,6 @@ void Blink(byte PIN, int DELAY_MS)
   delay(DELAY_MS);
   digitalWrite(PIN,LOW);
 }
-#endif
 
 #ifdef DALLAS_PIN
 int readDS18B20(OneWire ds)
@@ -151,6 +152,11 @@ void process_r_cmd(byte cmd)
         }
       }
       break;
+    case 11:
+      {
+        Blink(LED, 10000);
+      }
+      break;
     case 255:
       {
         wdt_enable(WDTO_15MS);
@@ -164,17 +170,20 @@ void doReport()
 {
   lData.processed = 0;
   lData.token = (unsigned int) random(1, 65536);
+  lData.type = 1;
   if (radio.sendWithRetry(GATEWAYID, (const void*)(&lData), sizeof(lData), SEND_RETRIES, ACK_TIME))
   {
     ackData = *(ACKPayload*) radio.DATA;
     if (ackData.token && ackData.token == lData.token)
     {
-      DEBUGln("Report sent");
-      lData.processed = 1;
-      lData.failedReport = 0;
-      if (ackData.cmd) process_r_cmd(ackData.cmd);
+      if (ackData.type && ackData.type == 1){
+        DEBUGln("Report sent");
+        lData.processed = 1;
+        lData.failedReport = 0;
+        if (ackData.cmd) process_r_cmd(ackData.cmd);
+      }
+      if (ackData.time) lData.time = ackData.time;
     }
-    else DEBUGln("Wrong security token!");
   }
   if (!lData.processed)
   {
@@ -271,7 +280,7 @@ void setup()
   
   DEBUG("Node id:");DEBUGln(NODEID);
   DEBUG("Sizeof Payload:");DEBUGln(sizeof(lData));
-  BLINK(10);
+  Blink(LED, 10);
   
   Sleepy::loseSomeTime(50);
   #ifdef MOTIONPIN

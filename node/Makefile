@@ -20,4 +20,4 @@ wireless_programming:
 
 
 wireless_upload: clean all $(TARGET_HEX) verify_size wireless_programming
-serial_upload: clean all $(TARGET_HEX) verify_size $(MAKE) do_upload
+serial_upload: clean all $(TARGET_HEX) verify_size do_upload

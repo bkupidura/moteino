@@ -36,9 +36,10 @@ typedef struct {
   boolean       motionDetected = false;
   boolean       processed = false;
   byte          failedReport = 0;
-  byte          locked = 0;
   byte          uptime = 0;
+  byte          type = 0; /* 0 - error, 1 - measure */
   unsigned int  token = 0;
+  uint32_t      time = 0;
   int16_t       rssi = 0;
   unsigned short version = VERSION;
 } Payload;
@@ -46,12 +47,14 @@ Payload rData, lData;
 
 typedef struct {
   int nodeid;
-  byte cmd; /*1 - measure (S), 10 - update (C), 255 - reboot (C,S), */
+  byte cmd; /*1 - measure (S), 10 - update (C), 11 - blink (C), 255 - reboot (C,S), */
 } remote_cmd;
 LinkedList<remote_cmd> cmd_list;
 
 typedef struct {
   unsigned int token = 0;
+  uint32_t     time = 0;
+  byte         type = 0; /* 0 - error, 1 - measure */
   byte         cmd = 0;
 } ACKPayload;
 
@@ -83,6 +86,14 @@ String value2metric(String sensor_type, int value, float divisor, int prec)
   sensor_type += ":";
   sensor_type += tmp;
   return sensor_type;
+}
+
+bool inrange(unsigned long time1, unsigned long time2)
+{
+  if (time1 - time2 > time2 - time1)
+    return time1 - time2 + MESSAGE_TIMEOUT <= 2 * MESSAGE_TIMEOUT;
+  else
+    return time2 - time1 + MESSAGE_TIMEOUT <= 2 * MESSAGE_TIMEOUT;
 }
 
 void doReport()
@@ -173,16 +184,24 @@ void loop()
       if (radio.ACKRequested())
       {
         ACKPayload ackData;
+        ackData.time = millis();
         if (rData.token) ackData.token = rData.token;
-      
-        for (int i = 0; i < cmd_list.size(); i++)
-        {
-          if (cmd_list.get(i).nodeid == senderid)
-          {
-            ackData.cmd = cmd_list.get(i).cmd;
-            cmd_list.remove(i);
-            break;
-          }
+        if (rData.time && inrange(millis(), rData.time)){
+            if (rData.type) ackData.type = rData.type;
+
+            for (int i = 0; i < cmd_list.size(); i++)
+            {
+              if (cmd_list.get(i).nodeid == senderid)
+              {
+                ackData.cmd = cmd_list.get(i).cmd;
+                cmd_list.remove(i);
+                break;
+              }
+            }
+        } else {
+            /* Ignore old messages - mitigate replay attacks
+            */
+            rData.type = 0; /* error */
         }
         radio.sendACK((const void*)&ackData, sizeof(ackData));
         if (ackData.cmd == 10) CheckForSerialHEX((byte *)"FLX?", 4, radio, senderid, ACK_TIME*30, ACK_TIME, true);
@@ -191,7 +210,7 @@ void loop()
     
     Blink(LED,3);
 
-    if (!rData.processed)
+    if (!rData.processed && rData.type)
     {
       if (rData.vcc) report_value(senderid, value2metric("voltage", rData.vcc, 1000.0, 2));
       if (rData.temp != 85) report_value(senderid, value2metric("temperature", rData.temp, 100.0, 1));
