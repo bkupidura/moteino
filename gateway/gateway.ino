@@ -17,7 +17,8 @@
 #include <Ports.h>         //get it here: https://github.com/jcw/jeelib
 #include <LinkedList.h>    //get it here: https://github.com/ivanseidel/LinkedList
 #include <avr/wdt.h>
-#include "config.h"
+#include "../lib/config.h"
+#include "../lib/utils.h"
 
 #ifdef SERIAL_EN
   #define DEBUG(input)   {Serial.print(input); delay(1); Serial.flush();}
@@ -30,33 +31,9 @@
 RFM69 radio;
 SPIFlash flash(FLASH_CS, 0xEF30); //EF40 for 16mbit windbond chip
 
-typedef struct {
-  int           vcc;
-  int           temp = 85; //DS18B20 returns 85 in case of error
-  boolean       motionDetected = false;
-  boolean       processed = false;
-  byte          failedReport = 0;
-  byte          uptime = 0;
-  byte          type = 0; /* 0 - error, 1 - measure */
-  unsigned int  token = 0;
-  uint32_t      time = 0;
-  int16_t       rssi = 0;
-  unsigned short version = VERSION;
-} Payload;
-Payload rData, lData;
-
-typedef struct {
-  int nodeid;
-  byte cmd; /*1 - measure (S), 10 - update (C), 11 - blink (C), 255 - reboot (C,S), */
-} remote_cmd;
+PayloadL3 rDataL3;
+PayloadL4measure lDataL4measure;
 LinkedList<remote_cmd> cmd_list;
-
-typedef struct {
-  unsigned int token = 0;
-  uint32_t     time = 0;
-  byte         type = 0; /* 0 - error, 1 - measure */
-  byte         cmd = 0;
-} ACKPayload;
 
 void Blink(byte PIN, int DELAY_MS)
 {
@@ -100,9 +77,8 @@ void doReport()
 {
   DEBUGln("doReport()");
 
-  if (lData.uptime == 255) lData.uptime = 50;
-  report_value(NODEID, value2metric("uptime", ++lData.uptime));
-  report_value(NODEID, value2metric("version", lData.version));
+  if (lDataL4measure.uptime == 255) lDataL4measure.uptime = 50;
+  report_value(GATEWAYID, value2metric("uptime", ++lDataL4measure.uptime));
 }
 
 void setup()
@@ -110,7 +86,7 @@ void setup()
   Blink(LED,10);
   Serial.begin(SERIAL_BAUD);
   DEBUGln("Setup...");
-  radio.initialize(FREQUENCY,NODEID,NETWORKID);
+  radio.initialize(FREQUENCY,GATEWAYID,NETWORKID);
   radio.setHighPower(); //uncomment only for RFM69HW!
   radio.encrypt(ENCRYPTKEY);
 
@@ -129,11 +105,9 @@ void setup()
 
 }
 
-void loop()
+void handle_serial_input()
 {
-  uint8_t senderid;
   String input;
-
   if (Serial.available())
   {
     delay(10); //Wait for message
@@ -141,27 +115,27 @@ void loop()
     {
       input += (char)Serial.read();
     }
-    if (input.length() > 0) 
+    if (input.length() > 0)
     {
       byte targetId = input.toInt();
       byte colonIndex = input.indexOf(":");
       input.toUpperCase();
       DEBUG("Got input on serial: "); DEBUGln(input);
       if (targetId > 0) input = input.substring(colonIndex+1);
-      if (targetId == NODEID)
+      if (targetId == GATEWAYID)
       {
         switch (input.toInt())
         {
-          case 1:
+          case CMD_MEASURE:
             doReport();
             break;
-          case 255:
+          case CMD_REBOOT:
             wdt_enable(WDTO_15MS);
             while(1);
             break;
         }
       }
-      else if (targetId != NODEID && targetId != RF69_BROADCAST_ADDR && targetId > 0 && targetId < RF69_BROADCAST_ADDR)
+      else if (targetId != GATEWAYID && targetId != RF69_BROADCAST_ADDR && targetId > 0 && targetId < RF69_BROADCAST_ADDR)
       {
         if (cmd_list.size() < COMMAND_LIST_MAX)
         {
@@ -173,53 +147,79 @@ void loop()
       }
     }
   }
-  
+}
+
+PayloadL3 build_ack(uint8_t senderid, unsigned int token, bool processed)
+{
+  PayloadL3 ackDataL3;
+  PayloadL4cmd ackDataL4cmd;
+
+  ackDataL3.time = millis();
+  if (token) ackDataL3.token = token;
+  if (processed) ackDataL3.type = MSG_ERROR;
+  else {
+    for (int i = 0; i < cmd_list.size(); i++)
+      if (cmd_list.get(i).nodeid == senderid)
+      {
+        ackDataL4cmd.cmd = cmd_list.get(i).cmd;
+        ackDataL3.type = MSG_COMMAND;
+        cmd_list.remove(i);
+        break;
+      }
+    memcpy(&ackDataL3.data, &ackDataL4cmd, sizeof(ackDataL4cmd));
+    ackDataL3.size = sizeof(ackDataL4cmd);
+  }
+
+  return ackDataL3;
+}
+
+uint8_t handle_radio_input()
+{
+  uint8_t senderid;
+  PayloadL3 ackDataL3;
+  PayloadL4cmd ackDataL4cmd;
+
   if (radio.receiveDone())
   {
-    if (radio.DATALEN > 0 && radio.DATALEN == sizeof(Payload))
+    if (radio.DATALEN > 0)
     {
-      rData = *(Payload*) radio.DATA;
+      rDataL3 = *(PayloadL3*) radio.DATA;
       senderid = radio.SENDERID;
-      
+
+      if (!rDataL3.time || !inrange(millis(), rDataL3.time))
+        rDataL3.processed = true; //ignore old messages; mitigate replay attack
+
       if (radio.ACKRequested())
       {
-        ACKPayload ackData;
-        ackData.time = millis();
-        if (rData.token) ackData.token = rData.token;
-        if (rData.time && inrange(millis(), rData.time)){
-            if (rData.type) ackData.type = rData.type;
+        ackDataL3 = build_ack(senderid, rDataL3.token, rDataL3.processed);
+        radio.sendACK((const void*)&ackDataL3, sizeof(ackDataL3));
 
-            for (int i = 0; i < cmd_list.size(); i++)
-            {
-              if (cmd_list.get(i).nodeid == senderid)
-              {
-                ackData.cmd = cmd_list.get(i).cmd;
-                cmd_list.remove(i);
-                break;
-              }
-            }
-        } else {
-            /* Ignore old messages - mitigate replay attacks
-            */
-            rData.type = 0; /* error */
+        if (ackDataL3.type == MSG_COMMAND){
+          memcpy(&ackDataL4cmd, &ackDataL3.data, ackDataL3.size);
+          if (ackDataL4cmd.cmd == CMD_UPDATE) CheckForSerialHEX((byte *)"FLX?", 4, radio, senderid, ACK_TIME*30, ACK_TIME, true);
         }
-        radio.sendACK((const void*)&ackData, sizeof(ackData));
-        if (ackData.cmd == 10) CheckForSerialHEX((byte *)"FLX?", 4, radio, senderid, ACK_TIME*30, ACK_TIME, true);
       }
     }
-    
     Blink(LED,3);
+  }
+  return senderid;
+}
 
-    if (!rData.processed && rData.type)
-    {
-      if (rData.vcc) report_value(senderid, value2metric("voltage", rData.vcc, 1000.0, 2));
-      if (rData.temp != 85) report_value(senderid, value2metric("temperature", rData.temp, 100.0, 1));
-      if (rData.uptime) report_value(senderid, value2metric("uptime", rData.uptime));
-      if (rData.motionDetected) report_value(senderid, value2metric("motion", rData.motionDetected));
-      if (rData.failedReport) report_value(senderid, value2metric("failedreport", rData.failedReport));
-      if (rData.rssi) report_value(senderid, value2metric("rssi", rData.rssi));
-      if (rData.version) report_value(senderid, value2metric("version", rData.version));
-      rData.processed = true;
-    }
+void loop()
+{
+  PayloadL4measure rDataL4measure;
+  handle_serial_input();
+  uint8_t senderid = handle_radio_input();
+
+  if (!rDataL3.processed && rDataL3.type == MSG_MEASURE)
+  {
+    memcpy(&rDataL4measure, &rDataL3.data, rDataL3.size);
+    if (rDataL4measure.vcc) report_value(senderid, value2metric("voltage", rDataL4measure.vcc, 1000.0, 2));
+    if (rDataL4measure.temp != 85) report_value(senderid, value2metric("temperature", rDataL4measure.temp, 100.0, 1));
+    if (rDataL4measure.uptime) report_value(senderid, value2metric("uptime", rDataL4measure.uptime));
+    if (rDataL4measure.motionDetected) report_value(senderid, value2metric("motion", rDataL4measure.motionDetected));
+    if (rDataL4measure.failedReport) report_value(senderid, value2metric("failedreport", rDataL4measure.failedReport));
+    if (rDataL4measure.rssi) report_value(senderid, value2metric("rssi", rDataL4measure.rssi));
+    rDataL3.processed = true;
   }
 }  

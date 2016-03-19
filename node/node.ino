@@ -6,7 +6,8 @@
 #include <WirelessHEX69.h>
 #include <avr/wdt.h>
 #include <PinChangeInt.h>
-#include "config.h"
+#include "../lib/config.h"
+#include "../lib/utils.h"
 
 #ifdef SERIAL_EN
   #define DEBUG(input)   {Serial.print(input); delay(1); Serial.flush(); }
@@ -37,28 +38,8 @@ RFM69 radio;
 OneWire oneWire(DALLAS_PIN);
 #endif
 
-typedef struct {
-  int           vcc;
-  int           temp = 85;
-  boolean       motionDetected = false;
-  boolean       processed = false;
-  byte          failedReport = 0;
-  byte          uptime = 0;
-  byte          type = 0; /* 0 - error, 1 - measure */
-  unsigned int  token = 0;
-  uint32_t      time = 0;
-  int16_t       rssi = 0;
-  unsigned short version = VERSION;
-} Payload;
-Payload lData;
-
-typedef struct {
-  unsigned int token = 0;
-  uint32_t     time = 0;
-  byte         type = 0; /* 0 - error, 1 - measure */
-  byte         cmd = 0;
-} ACKPayload;
-ACKPayload ackData;
+PayloadL3 lDataL3;
+PayloadL4measure lDataL4measure;
 
 static int smoothedAverage(int prev, int next, bool firstTime = 0)
 {
@@ -138,7 +119,7 @@ void process_r_cmd(byte cmd)
   DEBUG("Got remote command:"); DEBUGln(cmd);
   switch (cmd)
   {
-    case 10:
+    case CMD_UPDATE:
       {
         uint32_t now = millis();
         while (millis() - now < 1000*5)
@@ -152,12 +133,12 @@ void process_r_cmd(byte cmd)
         }
       }
       break;
-    case 11:
+    case CMD_BLINK:
       {
         Blink(LED, 10000);
       }
       break;
-    case 255:
+    case CMD_REBOOT:
       {
         wdt_enable(WDTO_15MS);
         while(1);
@@ -166,32 +147,47 @@ void process_r_cmd(byte cmd)
   }
 }
 
+void build_data()
+{
+  lDataL3.processed = false;
+  lDataL3.token = (unsigned int) random(1, 65536);
+  lDataL3.type = MSG_MEASURE;
+  lDataL3.size = sizeof(lDataL4measure);
+  memcpy(&lDataL3.data, &lDataL4measure, sizeof(lDataL4measure));
+}
+
 void doReport()
 {
-  lData.processed = 0;
-  lData.token = (unsigned int) random(1, 65536);
-  lData.type = 1;
-  if (radio.sendWithRetry(GATEWAYID, (const void*)(&lData), sizeof(lData), SEND_RETRIES, ACK_TIME))
+  PayloadL3 ackDataL3;
+  PayloadL4cmd ackDataL4cmd;
+  build_data();
+
+  if (radio.sendWithRetry(GATEWAYID, (const void*)(&lDataL3), sizeof(lDataL3), SEND_RETRIES, ACK_TIME))
   {
-    ackData = *(ACKPayload*) radio.DATA;
-    if (ackData.token && ackData.token == lData.token)
+    ackDataL3 = *(PayloadL3*) radio.DATA;
+    if (ackDataL3.token && ackDataL3.token == lDataL3.token)
     {
-      if (ackData.type && ackData.type == 1){
+      if (ackDataL3.type != MSG_ERROR)
+      {
         DEBUGln("Report sent");
-        lData.processed = 1;
-        lData.failedReport = 0;
-        if (ackData.cmd) process_r_cmd(ackData.cmd);
+        lDataL3.processed = true;
+        lDataL4measure.failedReport = 0;
       }
-      if (ackData.time) lData.time = ackData.time;
+      if (ackDataL3.type == MSG_COMMAND)
+      {
+        memcpy(&ackDataL4cmd, &ackDataL3.data, ackDataL3.size);
+        process_r_cmd(ackDataL4cmd.cmd);
+      }
+      if (ackDataL3.time) lDataL3.time = ackDataL3.time;
     }
   }
-  if (!lData.processed)
+  if (!lDataL3.processed)
   {
-    if (lData.failedReport < 255) lData.failedReport++;
+    if (lDataL4measure.failedReport < 255) lDataL4measure.failedReport++;
     DEBUGln("Failed report");
   }
 
-  lData.rssi = radio.readRSSI();
+  lDataL4measure.rssi = radio.readRSSI();
   radio.sleep();
   BLINK(3);
 }
@@ -205,9 +201,9 @@ void disable_motion()
 
 void motionIRQ()
 {
-  if (!lData.motionDetected)
+  if (!lDataL4measure.motionDetected)
   {
-    lData.motionDetected = true;
+    lDataL4measure.motionDetected = true;
     disable_motion();
     doReport();
     DEBUGln("Motion detected");
@@ -225,14 +221,14 @@ void doMeasure()
 {
   DEBUGln("doMeasure()");
   bool firstTime = 0;
-  if (lData.uptime == 0)
+  if (lDataL4measure.uptime == 0)
   {
     firstTime = 1;
   }
-  lData.vcc = smoothedAverage(lData.vcc, readVcc(), firstTime);
+  lDataL4measure.vcc = smoothedAverage(lDataL4measure.vcc, readVcc(), firstTime);
 
-  lData.uptime++;
-  if (lData.uptime == 255) lData.uptime = 50;
+  lDataL4measure.uptime++;
+  if (lDataL4measure.uptime == 255) lDataL4measure.uptime = 50;
 
   #ifdef DALLAS_PIN
     int temp_ds;
@@ -246,13 +242,13 @@ void doMeasure()
     pinMode(DALLAS_PIN_PWR, INPUT);
     if (t == 85)
     {
-      temp_ds = lData.temp;
+      temp_ds = lDataL4measure.temp;
     }
     else
     {
       temp_ds = t;
     }
-    lData.temp = smoothedAverage(lData.temp, temp_ds, firstTime);
+    lDataL4measure.temp = smoothedAverage(lDataL4measure.temp, temp_ds, firstTime);
   #endif
 }
 
@@ -279,7 +275,6 @@ void setup()
   randomSeed(analogRead(0));
   
   DEBUG("Node id:");DEBUGln(NODEID);
-  DEBUG("Sizeof Payload:");DEBUGln(sizeof(lData));
   Blink(LED, 10);
   
   Sleepy::loseSomeTime(50);
@@ -301,11 +296,11 @@ void loop()
     case MEASURE:
       scheduler.timer(MEASURE, MEASURE_PERIOD);
       #ifdef MOTIONPIN
-        if (lData.processed && lData.motionDetected)
+        if (lDataL3.processed && lDataL4measure.motionDetected)
         {
           DEBUGln("Cleaning motion sensor");
           enable_motion();
-          lData.motionDetected = false;
+          lDataL4measure.motionDetected = false;
         }
       #endif
       doMeasure();

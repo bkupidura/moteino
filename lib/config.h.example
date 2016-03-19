@@ -1,0 +1,26 @@
+#define GATEWAYID        1
+#define NETWORKID        100
+#define FREQUENCY        RF69_868MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
+#define ENCRYPTKEY       "sampleEncryptKey"
+#define LED              9
+#define FLASH_CS         8
+#define ACK_TIME         100
+#define SERIAL_BAUD      115200
+#define SERIAL_EN        //comment out if you don't want any serial verbose output
+#define COMMAND_LIST_MAX 20
+#define MESSAGE_TIMEOUT  240000UL /* 1000 ms * 120 (report interval) * 2 UL (unsigned long) */
+//#define BLIND                             //if BLIND disable LED blinking
+#define SEND_RETRIES    3
+#define MEASURE_PERIOD  10*40               // how often to measure, in tenths of seconds (500)
+#define REPORT_EVERY    3                  // report every N measurement cycles
+
+#if NODEID == 10
+  #define MOTIONPIN       16
+  #define FLASH_JEDEC 0xEF30
+#elif NODEID == 11
+  #define FLASH_JEDEC 0xEF30
+#elif NODEID == 12
+  #define DALLAS_PIN      15
+  #define DALLAS_PIN_PWR  14
+  #define FLASH_JEDEC 0x1F44
+#endif
