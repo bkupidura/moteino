@@ -1,12 +1,11 @@
 enum { MSG_ERROR=0, MSG_NULL=1, MSG_MEASURE=2, MSG_COMMAND=3};
 enum { CMD_MEASURE=1, CMD_UPDATE=10, CMD_BLINK=11, CMD_REBOOT=255};
 
-#define PAYLOADL3_LEN 11 //size of PayloadL3 in bytes rounded up; (1b+8b+32b+32b)/8
-#define ACKPAYLOADL3_LEN 10 //size of ACKPayloadL3 in bytes rounded up; (32b+32b+8b)/8
+#define PAYLOADL3_LEN 6 //size of PayloadL3 in bytes without data[] rounded up; (1b+16b+8b+8b+8b)/8
 typedef struct {
   bool          processed = false;
   unsigned int  token = 0;
-  uint32_t      time = 0;
+  byte          id = 0;
   byte          type = MSG_NULL;
   byte          size;
   byte          data[RF69_MAX_DATA_LEN-PAYLOADL3_LEN];

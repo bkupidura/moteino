@@ -178,7 +178,7 @@ void doReport()
         memcpy(&ackDataL4cmd, &ackDataL3.data, ackDataL3.size);
         process_r_cmd(ackDataL4cmd.cmd);
       }
-      if (ackDataL3.time) lDataL3.time = ackDataL3.time;
+      lDataL3.id = ackDataL3.id;
     }
   }
   if (!lDataL3.processed)

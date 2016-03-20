@@ -34,6 +34,7 @@ SPIFlash flash(FLASH_CS, 0xEF30); //EF40 for 16mbit windbond chip
 PayloadL3 rDataL3;
 PayloadL4measure lDataL4measure;
 LinkedList<remote_cmd> cmd_list;
+byte ids[255] = {0};
 
 void Blink(byte PIN, int DELAY_MS)
 {
@@ -65,14 +66,6 @@ String value2metric(String sensor_type, int value, float divisor, int prec)
   return sensor_type;
 }
 
-bool inrange(unsigned long time1, unsigned long time2)
-{
-  if (time1 - time2 > time2 - time1)
-    return time1 - time2 + MESSAGE_TIMEOUT <= 2 * MESSAGE_TIMEOUT;
-  else
-    return time2 - time1 + MESSAGE_TIMEOUT <= 2 * MESSAGE_TIMEOUT;
-}
-
 void doReport()
 {
   DEBUGln("doReport()");
@@ -89,6 +82,8 @@ void setup()
   radio.initialize(FREQUENCY,GATEWAYID,NETWORKID);
   radio.setHighPower(); //uncomment only for RFM69HW!
   radio.encrypt(ENCRYPTKEY);
+
+  randomSeed(analogRead(0));
 
   if (flash.initialize())
   {
@@ -154,7 +149,8 @@ PayloadL3 build_ack(uint8_t senderid, unsigned int token, bool processed)
   PayloadL3 ackDataL3;
   PayloadL4cmd ackDataL4cmd;
 
-  ackDataL3.time = millis();
+  ackDataL3.id = ids[senderid];
+
   if (token) ackDataL3.token = token;
   if (processed) ackDataL3.type = MSG_ERROR;
   else {
@@ -186,8 +182,10 @@ uint8_t handle_radio_input()
       rDataL3 = *(PayloadL3*) radio.DATA;
       senderid = radio.SENDERID;
 
-      if (!rDataL3.time || !inrange(millis(), rDataL3.time))
-        rDataL3.processed = true; //ignore old messages; mitigate replay attack
+      if (rDataL3.id != ids[senderid])
+        rDataL3.processed = true;
+      else
+        ids[senderid] = (byte) random(0, 256);
 
       if (radio.ACKRequested())
       {
