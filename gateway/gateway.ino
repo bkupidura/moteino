@@ -34,7 +34,7 @@ SPIFlash flash(FLASH_CS, 0xEF30); //EF40 for 16mbit windbond chip
 PayloadL3 rDataL3;
 PayloadL4measure lDataL4measure;
 LinkedList<remote_cmd> cmd_list;
-byte ids[255] = {0};
+unsigned int ids[ID_MAX] = {0};
 
 void Blink(byte PIN, int DELAY_MS)
 {
@@ -185,7 +185,7 @@ uint8_t handle_radio_input()
       if (rDataL3.id != ids[senderid])
         rDataL3.processed = true;
       else
-        ids[senderid] = (byte) random(0, 256);
+        ids[senderid] = (unsigned int) random(0, 65536);
 
       if (radio.ACKRequested())
       {

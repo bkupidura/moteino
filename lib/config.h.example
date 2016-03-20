@@ -8,7 +8,7 @@
 #define SERIAL_BAUD      115200
 #define SERIAL_EN        //comment out if you don't want any serial verbose output
 #define COMMAND_LIST_MAX 20
-#define MESSAGE_TIMEOUT  240000UL /* 1000 ms * 120 (report interval) * 2 UL (unsigned long) */
+#define ID_MAX           50 //For how much nodes we can store IDs; This should be always >= biggest NODEID used in network
 //#define BLIND                             //if BLIND disable LED blinking
 #define SEND_RETRIES    3
 #define MEASURE_PERIOD  10*40               // how often to measure, in tenths of seconds (500)
