@@ -55,7 +55,7 @@ NODE_ID:CMD
 
 ```
 $ cd node
-$ make serial_upload
+$ make NODEID=10 serial_upload
 ```
 
 #### Wireless
