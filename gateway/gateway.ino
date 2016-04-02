@@ -17,21 +17,12 @@
 #include <Ports.h>         //get it here: https://github.com/jcw/jeelib
 #include <LinkedList.h>    //get it here: https://github.com/ivanseidel/LinkedList
 #include <avr/wdt.h>
-#include "../lib/config.h"
+#include "../config.h"
 #include "../lib/utils.h"
-
-#ifdef SERIAL_EN
-  #define DEBUG(input)   {Serial.print(input); delay(1); Serial.flush();}
-  #define DEBUGln(input) {Serial.println(input); delay(1); Serial.flush();}
-#else
-  #define DEBUG(input);
-  #define DEBUGln(input);
-#endif
 
 RFM69 radio;
 SPIFlash flash(FLASH_CS, 0xEF30); //EF40 for 16mbit windbond chip
 
-PayloadL3 rDataL3;
 PayloadL4measure lDataL4measure;
 LinkedList<remote_cmd> cmd_list;
 unsigned int ids[ID_MAX] = {0};
@@ -144,7 +135,7 @@ void handle_serial_input()
   }
 }
 
-PayloadL3 build_ack(uint8_t senderid, unsigned int token, bool processed)
+PayloadL3 build_ack(uint8_t senderid, unsigned int token, byte type)
 {
   PayloadL3 ackDataL3;
   PayloadL4cmd ackDataL4cmd;
@@ -152,7 +143,7 @@ PayloadL3 build_ack(uint8_t senderid, unsigned int token, bool processed)
   ackDataL3.id = ids[senderid];
 
   if (token) ackDataL3.token = token;
-  if (processed) ackDataL3.type = MSG_ERROR;
+  if (type == MSG_ERROR) ackDataL3.type = MSG_ERROR;
   else {
     for (int i = 0; i < cmd_list.size(); i++)
       if (cmd_list.get(i).nodeid == senderid)
@@ -169,9 +160,9 @@ PayloadL3 build_ack(uint8_t senderid, unsigned int token, bool processed)
   return ackDataL3;
 }
 
-uint8_t handle_radio_input()
+PayloadL3ws handle_radio_input()
 {
-  uint8_t senderid;
+  PayloadL3ws rDataL3;
   PayloadL3 ackDataL3;
   PayloadL4cmd ackDataL4cmd;
 
@@ -179,45 +170,45 @@ uint8_t handle_radio_input()
   {
     if (radio.DATALEN > 0)
     {
-      rDataL3 = *(PayloadL3*) radio.DATA;
-      senderid = radio.SENDERID;
+      rDataL3.payload = *(PayloadL3*) radio.DATA;
+      rDataL3.senderid = radio.SENDERID;
 
-      if (rDataL3.id != ids[senderid])
-        rDataL3.processed = true;
-      else
-        ids[senderid] = (unsigned int) random(0, 65536);
+      if (!check_id(rDataL3.payload.id, &ids[rDataL3.senderid]))
+        rDataL3.payload.type = MSG_ERROR;
 
       if (radio.ACKRequested())
       {
-        ackDataL3 = build_ack(senderid, rDataL3.token, rDataL3.processed);
+        ackDataL3 = build_ack(rDataL3.senderid, rDataL3.payload.token, rDataL3.payload.type);
         radio.sendACK((const void*)&ackDataL3, sizeof(ackDataL3));
 
         if (ackDataL3.type == MSG_COMMAND){
           memcpy(&ackDataL4cmd, &ackDataL3.data, ackDataL3.size);
-          if (ackDataL4cmd.cmd == CMD_UPDATE) CheckForSerialHEX((byte *)"FLX?", 4, radio, senderid, ACK_TIME*30, ACK_TIME, true);
+          if (ackDataL4cmd.cmd == CMD_UPDATE) CheckForSerialHEX((byte *)"FLX?", 4, radio, rDataL3.senderid, ACK_TIME*30, ACK_TIME, true);
         }
       }
     }
     Blink(LED,3);
   }
-  return senderid;
+  return rDataL3;
 }
 
 void loop()
 {
+  PayloadL3ws rDataL3;
   PayloadL4measure rDataL4measure;
-  handle_serial_input();
-  uint8_t senderid = handle_radio_input();
 
-  if (!rDataL3.processed && rDataL3.type == MSG_MEASURE)
+  handle_serial_input();
+  rDataL3 = handle_radio_input();
+
+  if (rDataL3.payload.type == MSG_MEASURE)
   {
-    memcpy(&rDataL4measure, &rDataL3.data, rDataL3.size);
-    if (rDataL4measure.vcc) report_value(senderid, value2metric("voltage", rDataL4measure.vcc, 1000.0, 2));
-    if (rDataL4measure.temp != 85) report_value(senderid, value2metric("temperature", rDataL4measure.temp, 100.0, 1));
-    if (rDataL4measure.uptime) report_value(senderid, value2metric("uptime", rDataL4measure.uptime));
-    if (rDataL4measure.motionDetected) report_value(senderid, value2metric("motion", rDataL4measure.motionDetected));
-    if (rDataL4measure.failedReport) report_value(senderid, value2metric("failedreport", rDataL4measure.failedReport));
-    if (rDataL4measure.rssi) report_value(senderid, value2metric("rssi", rDataL4measure.rssi));
-    rDataL3.processed = true;
+    memcpy(&rDataL4measure, &rDataL3.payload.data, rDataL3.payload.size);
+    if (rDataL4measure.vcc) report_value(rDataL3.senderid, value2metric("voltage", rDataL4measure.vcc, 1000.0, 2));
+    if (rDataL4measure.temp != 85) report_value(rDataL3.senderid, value2metric("temperature", rDataL4measure.temp, 100.0, 1));
+    if (rDataL4measure.uptime) report_value(rDataL3.senderid, value2metric("uptime", rDataL4measure.uptime));
+    if (rDataL4measure.motionDetected) report_value(rDataL3.senderid, value2metric("motion", rDataL4measure.motionDetected));
+    if (rDataL4measure.failedReport) report_value(rDataL3.senderid, value2metric("failedreport", rDataL4measure.failedReport));
+    if (rDataL4measure.rssi) report_value(rDataL3.senderid, value2metric("rssi", rDataL4measure.rssi));
+    rDataL3.payload.type = MSG_NULL;
   }
 }  

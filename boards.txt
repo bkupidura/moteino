@@ -1,7 +1,7 @@
 ##############################################################
 Moteino.name=Moteino
 Moteino.upload.protocol=arduino
-Moteino.upload.maximum_size=31744
+Moteino.upload.maximum_size=30720
 Moteino.upload.speed=115200
 Moteino.bootloader.low_fuses=0xDE
 Moteino.bootloader.high_fuses=0xDC

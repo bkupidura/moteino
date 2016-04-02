@@ -6,16 +6,8 @@
 #include <WirelessHEX69.h>
 #include <avr/wdt.h>
 #include <PinChangeInt.h>
-#include "../lib/config.h"
+#include "../config.h"
 #include "../lib/utils.h"
-
-#ifdef SERIAL_EN
-  #define DEBUG(input)   {Serial.print(input); delay(1); Serial.flush(); }
-  #define DEBUGln(input) {Serial.println(input); delay(1); Serial.flush(); }
-#else
-  #define DEBUG(input);
-  #define DEBUGln(input);
-#endif
 
 #ifdef BLIND
   #define BLINK(delay);
@@ -38,8 +30,16 @@ RFM69 radio;
 OneWire oneWire(DALLAS_PIN);
 #endif
 
-PayloadL3 lDataL3;
 PayloadL4measure lDataL4measure;
+unsigned int last_id = 0;
+
+void doReport();
+#ifdef MOTIONPIN
+void disable_motion();
+void motionIRQ();
+void enable_motion();
+void clean_motion();
+#endif
 
 static int smoothedAverage(int prev, int next, bool firstTime = 0)
 {
@@ -113,6 +113,40 @@ int readDS18B20(OneWire ds)
   return resultTempFloat;
 }
 #endif
+#ifdef MOTIONPIN
+void disable_motion()
+{
+  pinMode(MOTIONPIN, OUTPUT);
+  PCintPort::detachInterrupt(MOTIONPIN);
+}
+
+void motionIRQ()
+{
+  if (!lDataL4measure.motionDetected)
+  {
+    lDataL4measure.motionDetected = true;
+    disable_motion();
+    doReport();
+    DEBUGln("Motion detected");
+  }
+}
+
+void enable_motion()
+{
+  pinMode(MOTIONPIN, INPUT_PULLUP);
+  PCintPort::attachInterrupt(MOTIONPIN, motionIRQ, RISING);
+}
+
+void clean_motion()
+{
+  if (lDataL4measure.motionDetected)
+  {
+    DEBUGln("Cleaning motion sensor");
+    enable_motion();
+    lDataL4measure.motionDetected = false;
+  }
+}
+#endif
 
 void process_r_cmd(byte cmd)
 {
@@ -147,75 +181,46 @@ void process_r_cmd(byte cmd)
   }
 }
 
-void build_data()
+PayloadL3 build_l3(unsigned int id)
 {
-  lDataL3.processed = false;
+  PayloadL3 lDataL3;
+  lDataL3.id = id;
   lDataL3.token = (unsigned int) random(1, 65536);
   lDataL3.type = MSG_MEASURE;
   lDataL3.size = sizeof(lDataL4measure);
   memcpy(&lDataL3.data, &lDataL4measure, sizeof(lDataL4measure));
+  return lDataL3;
 }
 
 void doReport()
 {
   PayloadL3 ackDataL3;
+  PayloadL3 lDataL3 = build_l3(last_id);
   PayloadL4cmd ackDataL4cmd;
-  build_data();
 
-  if (radio.sendWithRetry(GATEWAYID, (const void*)(&lDataL3), sizeof(lDataL3), SEND_RETRIES, ACK_TIME))
-  {
-    ackDataL3 = *(PayloadL3*) radio.DATA;
-    if (ackDataL3.token && ackDataL3.token == lDataL3.token)
-    {
-      if (ackDataL3.type != MSG_ERROR)
-      {
-        DEBUGln("Report sent");
-        lDataL3.processed = true;
-        lDataL4measure.failedReport = 0;
-      }
-      if (ackDataL3.type == MSG_COMMAND)
-      {
-        memcpy(&ackDataL4cmd, &ackDataL3.data, ackDataL3.size);
-        process_r_cmd(ackDataL4cmd.cmd);
-      }
-      lDataL3.id = ackDataL3.id;
-    }
-  }
-  if (!lDataL3.processed)
-  {
-    if (lDataL4measure.failedReport < 255) lDataL4measure.failedReport++;
+  ackDataL3 = sendWithRetry(radio, GATEWAYID, lDataL3, SEND_RETRIES, ACK_TIME);
+
+  if (ackDataL3.type != MSG_ERROR){
+    DEBUGln("Report sent");
+    lDataL4measure.failedReport = 0;
+    last_id = ackDataL3.id;
+    #ifdef MOTIONPIN
+      clean_motion();
+    #endif
+  } else {
     DEBUGln("Failed report");
+    if (lDataL4measure.failedReport < 255) lDataL4measure.failedReport++;
+  }
+
+  if (ackDataL3.type == MSG_COMMAND){
+    memcpy(&ackDataL4cmd, &ackDataL3.data, ackDataL3.size);
+    process_r_cmd(ackDataL4cmd.cmd);
   }
 
   lDataL4measure.rssi = radio.readRSSI();
   radio.sleep();
   BLINK(3);
 }
-
-#ifdef MOTIONPIN
-void disable_motion()
-{
-  pinMode(MOTIONPIN, OUTPUT);
-  PCintPort::detachInterrupt(MOTIONPIN);
-}
-
-void motionIRQ()
-{
-  if (!lDataL4measure.motionDetected)
-  {
-    lDataL4measure.motionDetected = true;
-    disable_motion();
-    doReport();
-    DEBUGln("Motion detected");
-  }
-}
-
-void enable_motion()
-{
-  pinMode(MOTIONPIN, INPUT_PULLUP);
-  PCintPort::attachInterrupt(MOTIONPIN, motionIRQ, RISING);
-}
-#endif
 
 void doMeasure()
 {
@@ -295,14 +300,6 @@ void loop()
     
     case MEASURE:
       scheduler.timer(MEASURE, MEASURE_PERIOD);
-      #ifdef MOTIONPIN
-        if (lDataL3.processed && lDataL4measure.motionDetected)
-        {
-          DEBUGln("Cleaning motion sensor");
-          enable_motion();
-          lDataL4measure.motionDetected = false;
-        }
-      #endif
       doMeasure();
       if (++reportCount >= REPORT_EVERY) {
         reportCount = 0;
