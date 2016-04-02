@@ -43,6 +43,7 @@ typedef struct {
 
 PayloadL3 sendWithRetry(RFM69 radio, uint8_t toAddress, PayloadL3 lDataL3, uint8_t retries, uint8_t retryWaitTime);
 bool check_id(unsigned int remote_id, unsigned int *local_id);
+void Blink(byte PIN, int DELAY_MS);
 
 PayloadL3 sendWithRetry(RFM69 radio, uint8_t toAddress, PayloadL3 lDataL3, uint8_t retries, uint8_t retryWaitTime){
   PayloadL3 ackDataL3;
@@ -67,4 +68,10 @@ bool check_id(unsigned int remote_id, unsigned int *local_id){
   else
     *local_id = (unsigned int) random(0, 65536);
   return true;
+}
+void Blink(byte PIN, int DELAY_MS){
+  pinMode(PIN, OUTPUT);
+  digitalWrite(PIN,HIGH);
+  delay(DELAY_MS);
+  digitalWrite(PIN,LOW);
 }

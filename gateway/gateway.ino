@@ -27,14 +27,6 @@ PayloadL4measure lDataL4measure;
 LinkedList<remote_cmd> cmd_list;
 unsigned int ids[ID_MAX] = {0};
 
-void Blink(byte PIN, int DELAY_MS)
-{
-  pinMode(PIN, OUTPUT);
-  digitalWrite(PIN,HIGH);
-  delay(DELAY_MS);
-  digitalWrite(PIN,LOW);
-}
-
 void report_value(uint8_t senderid, String value)
 {
   Serial.print("[");Serial.print(senderid);Serial.print("]");

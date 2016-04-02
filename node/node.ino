@@ -61,14 +61,6 @@ int readVcc()
   return (int)result;
 }
 
-void Blink(byte PIN, int DELAY_MS)
-{
-  pinMode(PIN, OUTPUT);
-  digitalWrite(PIN,HIGH);
-  delay(DELAY_MS);
-  digitalWrite(PIN,LOW);
-}
-
 #ifdef DALLAS_PIN
 int readDS18B20(OneWire ds)
 {
