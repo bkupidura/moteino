@@ -45,6 +45,7 @@ NODE_ID:CMD
 
 * 1 - do measure (supported on gateway)
 * 10 - handle wireless programming (supported on node)
+* 11 - LED blink (supported on node)
 * 255 - do reset (supported on gateway/node)
 
 ## Node
@@ -69,15 +70,24 @@ $ make NODEID=10 wireless_upload
 
 Enable mgw-gateway process if used.
 
-## Payload
+## Payload L3
+
+L3 is used to authenticate packet by sender and recipient.
+Inside L3 packet, there is L4 with actual data.
+
+* token - token used to verify ACK response by sender node, ACK should same token as packet
+* id - id used to verify packet by recipient node
+* type - type of packet (ERROR, NULL, MEASURE, COMMAND)
+* size - size of L4 (data) payload
+* data - L4 payload
+
+## Payload L4 measure
+
+L4 measure payload contains metrics reported by board.
 
 * vcc - current voltage
 * temp - temperature if DALLAS available
 * motionDetected - reed switch (interrupt)
-* processed - if data was already processed
 * failedReport - count of failed reports, it will be reset after first successfull report to gateway
-* locked - not used (yet)
 * uptime - increased in each doReport, when uptime == 255 it will be set to 50, uptime < 50 means board was rebooted
-* token - security token for ACK (should block fake ACKs)
 * rssi - rssi from radio
-* version - code version used by board
